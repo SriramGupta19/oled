@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32 OLED Daily Reminders (IST)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-xl font-bold text-cyan-400">OLED Desk Reminders</h1>
+        <p class="text-xs text-slate-400">Synced to ESP32 • IST (UTC+5:30)</p>
+      </div>
+      <div id="istClock" class="text-sm font-mono bg-slate-800 px-3 py-1.5 rounded-lg text-cyan-300">
+        --:--:--
+      </div>
+    </div>
+
+    <form id="reminderForm" class="space-y-3 mb-6">
+      <div class="flex gap-2">
+        <input
+          type="time"
+          id="timeInput"
+          required
+          class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+        />
+        <input
+          type="text"
+          id="textInput"
+          maxlength="54"
+          placeholder="Reminder text (max 54 chars)"
+          required
+          class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
+        />
+      </div>
+      <button
+        type="submit"
+        class="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold py-2 rounded-lg text-sm transition"
+      >
+        + Add Daily Reminder
+      </button>
+    </form>
+
+    <div class="border-t border-slate-800 pt-4">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+        Active Daily Schedule
+      </h2>
+      <ul id="reminderList" class="space-y-2 text-sm">
+        <li class="text-slate-500 text-xs">Loading reminders...</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const DB_URL = "https://esp32-oled-reminders-default-rtdb.asia-southeast1.firebasedatabase.app";
+
+    function updateISTClock() {
+      const now = new Date();
+      const istString = now.toLocaleTimeString("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+      document.getElementById("istClock").textContent = istString + " IST";
+    }
+    setInterval(updateISTClock, 1000);
+    updateISTClock();
+
+    async function loadReminders() {
+      const listEl = document.getElementById("reminderList");
+      try {
+        const res = await fetch(`${DB_URL}/reminders.json`);
+        const data = await res.json();
+        listEl.innerHTML = "";
+
+        if (!data) {
+          listEl.innerHTML = '<li class="text-slate-500 text-xs">No reminders set yet.</li>';
+          return;
+        }
+
+        const entries = Object.entries(data).sort((a, b) => a[1].time.localeCompare(b[1].time));
+
+        for (const [id, item] of entries) {
+          const li = document.createElement("li");
+          li.className = "flex items-center justify-between bg-slate-800/70 border border-slate-800 px-3 py-2.5 rounded-lg";
+          li.innerHTML = `
+            <div>
+              <span class="font-mono font-bold text-cyan-400 mr-2">${item.time}</span>
+              <span class="text-slate-200">${escapeHtml(item.text)}</span>
+            </div>
+            <button onclick="deleteReminder('${id}')" class="text-xs text-rose-400 hover:text-rose-300 px-2 py-1">
+              Delete
+            </button>
+          `;
+          listEl.appendChild(li);
+        }
+      } catch (err) {
+        listEl.innerHTML = '<li class="text-rose-400 text-xs">Error connecting to Firebase.</li>';
+      }
+    }
+
+    document.getElementById("reminderForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const time = document.getElementById("timeInput").value;
+      const text = document.getElementById("textInput").value.trim();
+      if (!time || !text) return;
+
+      await fetch(`${DB_URL}/reminders.json`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ time, text })
+      });
+
+      document.getElementById("textInput").value = "";
+      loadReminders();
+    });
+
+    async function deleteReminder(id) {
+      await fetch(`${DB_URL}/reminders/${id}.json`, { method: "DELETE" });
+      loadReminders();
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, (m) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[m]));
+    }
+
+    loadReminders();
+  </script>
+</body>
+</html>
