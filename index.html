@@ -10,7 +10,7 @@
   <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
     <div class="flex items-center justify-between mb-6">
       <div>
-        <h1 class="text-xl font-bold text-cyan-400">OLED Desk Reminders</h1>
+        <h1 class="text-xl font-bold text-cyan-400">OLED Desk Display</h1>
         <p class="text-xs text-slate-400">Synced to ESP32 • IST (UTC+5:30)</p>
       </div>
       <div id="istClock" class="text-sm font-mono bg-slate-800 px-3 py-1.5 rounded-lg text-cyan-300">
@@ -18,6 +18,50 @@
       </div>
     </div>
 
+    <!-- Custom Text Override Section -->
+    <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-sm font-semibold text-amber-300">Pin Custom Text</h2>
+          <p class="text-[11px] text-slate-400">Overrides clock & reminders until toggled off</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="customToggle" class="sr-only peer" />
+          <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-400"></div>
+        </label>
+      </div>
+
+      <div id="customControls" class="space-y-2.5">
+        <div class="flex gap-2">
+          <input
+            type="text"
+            id="customTextInput"
+            maxlength="54"
+            placeholder="Type message to pin on OLED..."
+            class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
+          />
+          <button
+            type="button"
+            id="saveCustomBtn"
+            class="bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold px-3.5 py-2 rounded-lg text-sm transition"
+          >
+            Send
+          </button>
+        </div>
+
+        <!-- Commonly Used Quick Messages -->
+        <div class="flex flex-wrap gap-1.5 pt-1">
+          <button type="button" onclick="applyQuickMsg('In a Meeting')" class="text-[11px] bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-md transition">In a Meeting</button>
+          <button type="button" onclick="applyQuickMsg('Focus Mode - DND')" class="text-[11px] bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-md transition">Focus Mode - DND</button>
+          <button type="button" onclick="applyQuickMsg('Be Right Back')" class="text-[11px] bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-md transition">Be Right Back</button>
+          <button type="button" onclick="applyQuickMsg('Gone for Lunch')" class="text-[11px] bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-md transition">Gone for Lunch</button>
+          <button type="button" onclick="applyQuickMsg('On a Call')" class="text-[11px] bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-md transition">On a Call</button>
+          <button type="button" onclick="applyQuickMsg('Out for Coffee')" class="text-[11px] bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 px-2.5 py-1 rounded-md transition">Out for Coffee</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily Reminders Form -->
     <form id="reminderForm" class="space-y-3 mb-6">
       <div class="flex gap-2">
         <input
@@ -30,7 +74,7 @@
           type="text"
           id="textInput"
           maxlength="54"
-          placeholder="Reminder text (max 54 chars)"
+          placeholder="Daily reminder (max 54 chars)"
           required
           class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400"
         />
@@ -68,6 +112,50 @@
     }
     setInterval(updateISTClock, 1000);
     updateISTClock();
+
+    async function loadCustomState() {
+      try {
+        const res = await fetch(`${DB_URL}/customDisplay.json`);
+        const data = await res.json();
+        if (data) {
+          document.getElementById("customToggle").checked = !!data.enabled;
+          document.getElementById("customTextInput").value = data.text || "";
+        }
+      } catch (err) {
+        console.error("Failed to load custom display state", err);
+      }
+    }
+
+    async function syncCustomState(enabled, text) {
+      await fetch(`${DB_URL}/customDisplay.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, text })
+      });
+    }
+
+    document.getElementById("customToggle").addEventListener("change", async (e) => {
+      const enabled = e.target.checked;
+      let text = document.getElementById("customTextInput").value.trim();
+      if (enabled && !text) {
+        text = "In a Meeting";
+        document.getElementById("customTextInput").value = text;
+      }
+      await syncCustomState(enabled, text);
+    });
+
+    document.getElementById("saveCustomBtn").addEventListener("click", async () => {
+      const text = document.getElementById("customTextInput").value.trim();
+      if (!text) return;
+      document.getElementById("customToggle").checked = true;
+      await syncCustomState(true, text);
+    });
+
+    async function applyQuickMsg(msg) {
+      document.getElementById("customTextInput").value = msg;
+      document.getElementById("customToggle").checked = true;
+      await syncCustomState(true, msg);
+    }
 
     async function loadReminders() {
       const listEl = document.getElementById("reminderList");
@@ -129,6 +217,7 @@
       }[m]));
     }
 
+    loadCustomState();
     loadReminders();
   </script>
 </body>
